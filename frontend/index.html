@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alerta Temprana · Universidad Israel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>body { font-family: 'Inter', sans-serif; }</style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+
+  <header class="bg-gradient-to-br from-blue-950 via-blue-800 to-indigo-700 text-white pb-20">
+    <div class="max-w-6xl mx-auto px-6 pt-14">
+      <p class="text-amber-300 text-sm font-semibold tracking-widest uppercase">Universidad Israel · Prototipo MVP</p>
+      <h1 class="text-3xl md:text-5xl font-extrabold mt-3">Alerta Temprana de Deserción Estudiantil</h1>
+      <p class="mt-4 max-w-2xl text-blue-100">
+        Identifica a tiempo a los estudiantes con mayor riesgo de abandono y activa tutorías de apoyo
+        desde un solo panel. Datos ficticios con fines demostrativos.
+      </p>
+      <a href="http://localhost:8000/docs" target="_blank"
+         class="inline-block mt-6 bg-amber-400 text-blue-950 font-semibold px-5 py-2.5 rounded-xl hover:bg-amber-300 transition">
+        Ver documentación de la API →
+      </a>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-6 -mt-12">
+    <div id="error" class="hidden mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">
+      No se pudo conectar con la API. Verifica que el backend esté corriendo en http://localhost:8000.
+    </div>
+
+    <section id="kpis" class="grid grid-cols-2 md:grid-cols-4 gap-4"></section>
+
+    <section class="bg-white rounded-2xl shadow-lg mt-8 overflow-hidden">
+      <div class="p-5 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+        <h2 class="text-xl font-bold text-blue-950">Estudiantes en seguimiento</h2>
+        <div class="flex gap-3">
+          <select id="fCarrera" onchange="cargar()" class="border rounded-lg px-3 py-2 text-sm"></select>
+          <select id="fNivel" onchange="cargar()" class="border rounded-lg px-3 py-2 text-sm">
+            <option value="">Todos los niveles</option>
+            <option>Alto</option><option>Medio</option><option>Bajo</option>
+          </select>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left">
+          <thead class="bg-slate-100 text-xs uppercase text-slate-500">
+            <tr>
+              <th class="p-3">Estudiante</th><th class="p-3">Carrera</th><th class="p-3">Promedio</th>
+              <th class="p-3">Asistencia</th><th class="p-3">Riesgo</th><th class="p-3">Alertas</th><th class="p-3"></th>
+            </tr>
+          </thead>
+          <tbody id="filas"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal tutoría -->
+  <div id="modal" class="hidden fixed inset-0 bg-black/50 items-center justify-center p-4">
+    <div class="bg-white rounded-2xl p-6 w-full max-w-md">
+      <h3 class="text-lg font-bold text-blue-950">Registrar tutoría</h3>
+      <p id="mNombre" class="text-sm text-slate-500 mb-4"></p>
+      <select id="mTipo" class="w-full border rounded-lg px-3 py-2 mb-3">
+        <option>Tutoría académica</option><option>Apoyo psicológico</option><option>Orientación financiera</option>
+      </select>
+      <textarea id="mObs" rows="3" maxlength="300" placeholder="Observación (opcional)"
+                class="w-full border rounded-lg px-3 py-2 mb-4"></textarea>
+      <div class="flex justify-end gap-2">
+        <button onclick="cerrar()" class="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100">Cancelar</button>
+        <button onclick="guardar()" class="px-4 py-2 rounded-lg bg-blue-800 text-white font-semibold hover:bg-blue-700">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="mt-16 bg-blue-950 text-blue-200 text-center py-6 text-sm">
+    Prototipo demostrativo con datos ficticios · Desarrollado por
+    <strong class="text-white">Diego Vallejo</strong>
+  </footer>
+
+<script>
+  const API = "http://localhost:8000/api";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const badge = {Alto: "bg-red-100 text-red-700", Medio: "bg-amber-100 text-amber-700", Bajo: "bg-emerald-100 text-emerald-700"};
+  const barra = {Alto: "bg-red-500", Medio: "bg-amber-500", Bajo: "bg-emerald-500"};
+  let lista = [], seleccionado = null;
+
+  async function api(ruta, opciones) {
+    const r = await fetch(API + ruta, opciones);
+    if (!r.ok) throw new Error(r.status);
+    return r.json();
+  }
+
+  async function cargarCarreras() {
+    const carreras = await api("/carreras");
+    $("fCarrera").innerHTML = '<option value="">Todas las carreras</option>' +
+      carreras.map(c => `<option>${esc(c)}</option>`).join("");
+  }
+
+  async function cargar() {
+    try {
+      const q = new URLSearchParams();
+      if ($("fCarrera").value) q.set("carrera", $("fCarrera").value);
+      if ($("fNivel").value) q.set("nivel", $("fNivel").value);
+      const [res, est] = await Promise.all([api("/resumen"), api("/estudiantes?" + q)]);
+      lista = est;
+      pintarKpis(res);
+      pintarTabla(est);
+      $("error").classList.add("hidden");
+    } catch (e) {
+      $("error").classList.remove("hidden");
+    }
+  }
+
+  function pintarKpis(r) {
+    const items = [
+      ["Estudiantes monitoreados", r.total, "text-blue-900"],
+      ["Riesgo alto", r.alto, "text-red-600"],
+      ["Riesgo medio", r.medio, "text-amber-600"],
+      ["Tutorías registradas", r.tutorias, "text-emerald-600"],
+    ];
+    $("kpis").innerHTML = items.map(([t, v, c]) => `
+      <div class="bg-white rounded-2xl shadow-lg p-5">
+        <p class="text-sm text-slate-500">${t}</p>
+        <p class="text-3xl font-extrabold mt-1 ${c}">${v}</p>
+      </div>`).join("");
+  }
+
+  function pintarTabla(est) {
+    $("filas").innerHTML = est.map(e => `
+      <tr class="border-t hover:bg-slate-50">
+        <td class="p-3"><p class="font-semibold">${esc(e.nombre)}</p><p class="text-xs text-slate-400">${esc(e.codigo)}</p></td>
+        <td class="p-3 text-sm">${esc(e.carrera)}<br><span class="text-slate-400">Semestre ${e.semestre}</span></td>
+        <td class="p-3 text-sm">${e.promedio.toFixed(2)}</td>
+        <td class="p-3 text-sm">${e.asistencia}%</td>
+        <td class="p-3 w-44">
+          <div class="flex items-center gap-2">
+            <div class="flex-1 h-2 bg-slate-200 rounded-full"><div class="h-2 rounded-full ${barra[e.nivel]}" style="width:${e.riesgo}%"></div></div>
+            <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${badge[e.nivel]}">${e.nivel} · ${e.riesgo}</span>
+          </div>
+        </td>
+        <td class="p-3 text-xs text-slate-500">${e.motivos.map(m => esc(m)).join(" · ") || "Sin alertas"}</td>
+        <td class="p-3 text-center">
+          <button onclick="abrir(${e.id})" class="text-sm bg-blue-800 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
+            Tutoría${e.tutorias ? ` (${e.tutorias})` : ""}
+          </button>
+        </td>
+      </tr>`).join("");
+  }
+
+  function abrir(id) {
+    seleccionado = lista.find(e => e.id === id);
+    $("mNombre").textContent = seleccionado.nombre;
+    $("modal").classList.remove("hidden");
+    $("modal").classList.add("flex");
+  }
+
+  function cerrar() {
+    $("modal").classList.add("hidden");
+    $("modal").classList.remove("flex");
+  }
+
+  async function guardar() {
+    await api(`/estudiantes/${seleccionado.id}/tutorias`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({tipo: $("mTipo").value, observacion: $("mObs").value}),
+    });
+    $("mObs").value = "";
+    cerrar();
+    cargar();
+  }
+
+  cargarCarreras().then(cargar).catch(() => $("error").classList.remove("hidden"));
+</script>
+</body>
+</html>
